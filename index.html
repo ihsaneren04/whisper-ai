@@ -1,115 +1,707 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Whisper UI — Ses/Video Transkripsiyon</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Whisper UI — Client-Side Transkripsiyon</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --surface: #171a21;
+      --surface-2: #1f232c;
+      --border: #2a2f3a;
+      --text: #e8eaed;
+      --text-dim: #9aa0ac;
+      --accent: #6c8cff;
+      --accent-hover: #86a1ff;
+      --success: #4ade80;
+      --error: #f87171;
+      --radius: 10px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 40px 20px 80px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    header h1 {
+      font-size: 1.8rem;
+      margin: 0 0 6px;
+    }
+
+    .subtitle {
+      color: var(--text-dim);
+      margin: 0;
+      font-size: 0.95rem;
+    }
+
+    main {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+    }
+
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 36px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .dropzone:hover,
+    .dropzone.dragover {
+      border-color: var(--accent);
+      background: rgba(108, 140, 255, 0.06);
+    }
+
+    .dz-icon {
+      font-size: 2rem;
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .dz-hint {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      margin-top: 4px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    #file-selected button {
+      margin-top: 8px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+
+    #file-selected button:hover {
+      color: var(--error);
+      border-color: var(--error);
+    }
+
+    .options-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin: 24px 0;
+    }
+
+    .option label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+    }
+
+    .option select {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+
+    .option .hint {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    button#submit-btn {
+      width: 100%;
+      padding: 14px;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: #0b0d12;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    button#submit-btn:hover:not(:disabled) {
+      background: var(--accent-hover);
+    }
+
+    button#submit-btn:disabled {
+      background: var(--surface-2);
+      color: var(--text-dim);
+      cursor: not-allowed;
+    }
+
+    #status-section {
+      text-align: center;
+      padding: 32px 0 8px;
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      margin: 0 auto 14px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    #status-text {
+      color: var(--text-dim);
+    }
+
+    #result-section {
+      margin-top: 24px;
+    }
+
+    .result-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .result-header h2 {
+      margin: 0;
+      font-size: 1.1rem;
+    }
+
+    .result-meta {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+    }
+
+    .result-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .result-actions button {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 7px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.82rem;
+    }
+
+    .result-actions button:hover {
+      border-color: var(--accent);
+    }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 0.88rem;
+      border-bottom: 2px solid transparent;
+    }
+
+    .tab-btn.active {
+      color: var(--text);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    #plain-text {
+      width: 100%;
+      min-height: 220px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 14px;
+      font-size: 0.92rem;
+      resize: vertical;
+    }
+
+    #segments-list {
+      max-height: 320px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .segment-row {
+      display: flex;
+      gap: 12px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.88rem;
+    }
+
+    .segment-row:last-child {
+      border-bottom: none;
+    }
+
+    .segment-time {
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .segment-text {
+      color: var(--text);
+    }
+
+    #error-section {
+      margin-top: 20px;
+      padding: 14px 16px;
+      background: rgba(248, 113, 113, 0.08);
+      border: 1px solid rgba(248, 113, 113, 0.3);
+      border-radius: 8px;
+      color: var(--error);
+      font-size: 0.9rem;
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 28px;
+      color: var(--text-dim);
+      font-size: 0.8rem;
+    }
+
+    @media (max-width: 600px) {
+      .options-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 </head>
 <body>
-<div class="wrap">
+  <div class="wrap">
+    <header>
+      <h1>🎙️ Whisper UI</h1>
+      <p class="subtitle">Client-side: OpenAI Whisper ile ses ve video dosyalarını yazıya dökün</p>
+    </header>
 
-  <header>
-    <h1>🎙️ Whisper UI</h1>
-    <p class="subtitle">OpenAI Whisper ile ses ve video dosyalarını yazıya dökün</p>
-  </header>
-
-  <main>
-    <form id="transcribe-form">
-      <div class="dropzone" id="dropzone">
-        <input type="file" id="file-input" name="file" accept=".mp3,.wav,.m4a,.mp4,.flac,.ogg,.webm,.mov" hidden>
-        <div id="dropzone-content">
-          <span class="dz-icon">📁</span>
-          <p><strong>Dosya seç</strong> ya da buraya sürükle</p>
-          <p class="dz-hint">mp3, wav, m4a, mp4, flac, ogg, webm, mov</p>
-        </div>
-        <div id="file-selected" class="hidden">
-          <span class="dz-icon">✅</span>
-          <p id="file-name"></p>
-          <button type="button" id="clear-file">Kaldır</button>
-        </div>
-      </div>
-
-      <div class="options-grid">
-        <div class="option">
-          <label for="model">Model</label>
-          <select id="model" name="model">
-            {% for m in models %}
-            <option value="{{ m }}" {% if m == 'base' %}selected{% endif %}>{{ m }}</option>
-            {% endfor %}
-          </select>
-          <span class="hint">Büyük model = daha doğru ama daha yavaş</span>
+    <main>
+      <form id="transcribe-form">
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="file-input" name="file" accept=".mp3,.wav,.m4a,.mp4,.flac,.ogg,.webm,.mov" hidden>
+          <div id="dropzone-content">
+            <span class="dz-icon">📁</span>
+            <p><strong>Dosya seç</strong> ya da buraya sürükle</p>
+            <p class="dz-hint">mp3, wav, m4a, mp4, flac, ogg, webm, mov</p>
+          </div>
+          <div id="file-selected" class="hidden">
+            <span class="dz-icon">✅</span>
+            <p id="file-name"></p>
+            <button type="button" id="clear-file">Kaldır</button>
+          </div>
         </div>
 
-        <div class="option">
-          <label for="language">Dil</label>
-          <select id="language" name="language">
-            <option value="auto" selected>Otomatik algıla</option>
-            <option value="tr">Türkçe</option>
-            <option value="en">İngilizce</option>
-            <option value="de">Almanca</option>
-            <option value="fr">Fransızca</option>
-            <option value="es">İspanyolca</option>
-            <option value="ru">Rusça</option>
-            <option value="ar">Arapça</option>
-          </select>
+        <div class="options-grid">
+          <div class="option">
+            <label for="model">Model</label>
+            <select id="model" name="model">
+              <option value="tiny">tiny (39M, en hızlı)</option>
+              <option value="base" selected>base (74M, dengeliş)</option>
+              <option value="small">small (244M)</option>
+            </select>
+            <span class="hint">Büyük = daha doğru ama yavaş</span>
+          </div>
+
+          <div class="option">
+            <label for="language">Dil</label>
+            <select id="language" name="language">
+              <option value="auto" selected>Otomatik algıla</option>
+              <option value="tr">Türkçe</option>
+              <option value="en">İngilizce</option>
+              <option value="de">Almanca</option>
+              <option value="fr">Fransızca</option>
+              <option value="es">İspanyolca</option>
+              <option value="ru">Rusça</option>
+            </select>
+          </div>
+
+          <div class="option">
+            <label for="task">İşlem</label>
+            <select id="task" name="task">
+              <option value="transcribe" selected>Transkript (orijinal dil)</option>
+              <option value="translate">İngilizceye çevir</option>
+            </select>
+          </div>
         </div>
 
-        <div class="option">
-          <label for="task">İşlem</label>
-          <select id="task" name="task">
-            <option value="transcribe" selected>Transkript (orijinal dil)</option>
-            <option value="translate">İngilizceye çevir</option>
-          </select>
+        <button type="submit" id="submit-btn" disabled>Transkript Et</button>
+      </form>
+
+      <section id="status-section" class="hidden">
+        <div class="spinner"></div>
+        <p id="status-text">Model yükleniyor...</p>
+      </section>
+
+      <section id="result-section" class="hidden">
+        <div class="result-header">
+          <h2>Sonuç</h2>
+          <div class="result-meta">
+            <span id="detected-lang"></span>
+          </div>
+          <div class="result-actions">
+            <button type="button" id="copy-btn">📋 Kopyala</button>
+            <button type="button" id="download-txt-btn">⬇ .txt indir</button>
+            <button type="button" id="download-srt-btn">⬇ .srt indir</button>
+          </div>
         </div>
-      </div>
 
-      <button type="submit" id="submit-btn" disabled>Transkript Et</button>
-    </form>
-
-    <section id="status-section" class="hidden">
-      <div class="spinner"></div>
-      <p id="status-text">Başlatılıyor...</p>
-    </section>
-
-    <section id="result-section" class="hidden">
-      <div class="result-header">
-        <h2>Sonuç</h2>
-        <div class="result-meta">
-          <span id="detected-lang"></span>
+        <div class="tabs">
+          <button type="button" class="tab-btn active" data-tab="plain">Düz Metin</button>
+          <button type="button" class="tab-btn" data-tab="segments">Zaman Damgalı</button>
         </div>
-        <div class="result-actions">
-          <button type="button" id="copy-btn">📋 Kopyala</button>
-          <button type="button" id="download-txt-btn">⬇ .txt indir</button>
-          <button type="button" id="download-srt-btn">⬇ .srt indir</button>
+
+        <div id="tab-plain" class="tab-content active">
+          <textarea id="plain-text" readonly></textarea>
         </div>
-      </div>
 
-      <div class="tabs">
-        <button type="button" class="tab-btn active" data-tab="plain">Düz Metin</button>
-        <button type="button" class="tab-btn" data-tab="segments">Zaman Damgalı</button>
-      </div>
+        <div id="tab-segments" class="tab-content">
+          <div id="segments-list"></div>
+        </div>
+      </section>
 
-      <div id="tab-plain" class="tab-content active">
-        <textarea id="plain-text" readonly></textarea>
-      </div>
+      <section id="error-section" class="hidden">
+        <p id="error-text"></p>
+      </section>
+    </main>
 
-      <div id="tab-segments" class="tab-content">
-        <div id="segments-list"></div>
-      </div>
-    </section>
+    <footer>
+      <p>Tamamen client-side çalışır — dosyalarınız tarayıcıdan dışarı çıkmaz.</p>
+    </footer>
+  </div>
 
-    <section id="error-section" class="hidden">
-      <p id="error-text"></p>
-    </section>
-  </main>
+  <script>
+    // Whisper ONNX runtime'ı CDN'den yükle
+    const WHISPER_JS_URL = "https://cdn-models.huggingface.co/whisper-web/whisper_onnx.js";
 
-  <footer>
-    <p>Yerel olarak çalışır — dosyalarınız hiçbir yere gönderilmez.</p>
-  </footer>
+    let whisperWorker = null;
+    let selectedFile = null;
+    let currentResult = null;
 
-</div>
+    const dropzone = document.getElementById("dropzone");
+    const fileInput = document.getElementById("file-input");
+    const dropzoneContent = document.getElementById("dropzone-content");
+    const fileSelected = document.getElementById("file-selected");
+    const fileNameEl = document.getElementById("file-name");
+    const clearFileBtn = document.getElementById("clear-file");
+    const submitBtn = document.getElementById("submit-btn");
+    const form = document.getElementById("transcribe-form");
 
-<script src="{{ url_for('static', filename='app.js') }}"></script>
+    const statusSection = document.getElementById("status-section");
+    const statusText = document.getElementById("status-text");
+    const resultSection = document.getElementById("result-section");
+    const errorSection = document.getElementById("error-section");
+    const errorText = document.getElementById("error-text");
+
+    const plainTextEl = document.getElementById("plain-text");
+    const segmentsListEl = document.getElementById("segments-list");
+    const detectedLangEl = document.getElementById("detected-lang");
+
+    // File selection
+    dropzone.addEventListener("click", () => fileInput.click());
+
+    dropzone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropzone.classList.add("dragover");
+    });
+
+    dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+
+    dropzone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropzone.classList.remove("dragover");
+      if (e.dataTransfer.files.length) {
+        setFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files.length) setFile(fileInput.files[0]);
+    });
+
+    clearFileBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setFile(null);
+    });
+
+    function setFile(file) {
+      selectedFile = file;
+      if (file) {
+        fileNameEl.textContent = `${file.name} (${formatSize(file.size)})`;
+        dropzoneContent.classList.add("hidden");
+        fileSelected.classList.remove("hidden");
+        submitBtn.disabled = false;
+      } else {
+        fileInput.value = "";
+        dropzoneContent.classList.remove("hidden");
+        fileSelected.classList.add("hidden");
+        submitBtn.disabled = true;
+      }
+    }
+
+    function formatSize(bytes) {
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    // Submit
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!selectedFile) return;
+
+      resetUI();
+      statusSection.classList.remove("hidden");
+      statusText.textContent = "Ses dosyası işleniyor...";
+      submitBtn.disabled = true;
+
+      try {
+        // Audio dosyasını ArrayBuffer'a çevir
+        const arrayBuffer = await selectedFile.arrayBuffer();
+
+        // Worker'a gönder
+        whisperWorker.postMessage({
+          type: "transcribe",
+          audio: arrayBuffer,
+          model: document.getElementById("model").value,
+          language: document.getElementById("language").value,
+          task: document.getElementById("task").value,
+        });
+      } catch (err) {
+        showError("Dosya işlenirken hata: " + err.message);
+      }
+    });
+
+    // Worker message handler
+    function initWorker() {
+      if (whisperWorker) return;
+
+      whisperWorker = new Worker(URL.createObjectURL(new Blob([`
+        let whisper = null;
+
+        async function initWhisper(model) {
+          if (whisper) return;
+          importScripts("https://cdn-models.huggingface.co/whisper-web/whisper.js");
+          const Whisper = self.Whisper;
+          whisper = new Whisper({
+            model: model
+          });
+          await whisper.init();
+        }
+
+        self.onmessage = async (e) => {
+          const { type, audio, model, language, task } = e.data;
+
+          if (type === "transcribe") {
+            try {
+              await initWhisper(model);
+
+              self.postMessage({ type: "status", text: "Transkript oluşturuluyor..." });
+
+              const result = await whisper.transcribe(audio, {
+                language: language === "auto" ? null : language,
+                task: task
+              });
+
+              self.postMessage({
+                type: "result",
+                text: result.text,
+                language: result.language,
+                segments: result.segments
+              });
+            } catch (err) {
+              self.postMessage({
+                type: "error",
+                error: err.message
+              });
+            }
+          }
+        };
+      `], { type: "application/javascript" })));
+
+      whisperWorker.onmessage = (e) => {
+        const { type, text, language, segments, error } = e.data;
+
+        if (type === "status") {
+          statusText.textContent = text;
+        } else if (type === "result") {
+          showResult({
+            text: text,
+            language: language,
+            segments: segments || []
+          });
+        } else if (type === "error") {
+          showError("Transkripsiyon hatası: " + error);
+        }
+      };
+
+      whisperWorker.onerror = (err) => {
+        showError("Worker hatası: " + err.message);
+      };
+    }
+
+    function showResult(result) {
+      currentResult = result;
+      statusSection.classList.add("hidden");
+      resultSection.classList.remove("hidden");
+      submitBtn.disabled = false;
+
+      detectedLangEl.textContent = `Algılanan dil: ${result.language}`;
+      plainTextEl.value = result.text;
+
+      segmentsListEl.innerHTML = "";
+      (result.segments || []).forEach((seg) => {
+        const row = document.createElement("div");
+        row.className = "segment-row";
+        row.innerHTML = `<span class="segment-time">[${formatTime(seg.start)} → ${formatTime(seg.end)}]</span><span class="segment-text">${escapeHtml(seg.text)}</span>`;
+        segmentsListEl.appendChild(row);
+      });
+    }
+
+    function showError(msg) {
+      statusSection.classList.add("hidden");
+      errorSection.classList.remove("hidden");
+      errorText.textContent = "⚠ " + msg;
+      submitBtn.disabled = false;
+    }
+
+    function resetUI() {
+      resultSection.classList.add("hidden");
+      errorSection.classList.add("hidden");
+    }
+
+    function formatTime(seconds) {
+      if (!seconds) return "0:00";
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = Math.floor(seconds % 60);
+      if (h > 0) return `${pad(h)}:${pad(m)}:${pad(s)}`;
+      return `${pad(m)}:${pad(s)}`;
+    }
+
+    function pad(n) {
+      return String(n).padStart(2, "0");
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // Tabs
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+        document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
+        btn.classList.add("active");
+        document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
+      });
+    });
+
+    // Download/Copy
+    document.getElementById("copy-btn").addEventListener("click", () => {
+      if (!currentResult) return;
+      navigator.clipboard.writeText(currentResult.text).then(() => {
+        const btn = document.getElementById("copy-btn");
+        const original = btn.textContent;
+        btn.textContent = "✓ Kopyalandı";
+        setTimeout(() => (btn.textContent = original), 1500);
+      });
+    });
+
+    document.getElementById("download-txt-btn").addEventListener("click", () => {
+      if (!currentResult) return;
+      downloadFile(currentResult.text, "transkript.txt", "text/plain");
+    });
+
+    document.getElementById("download-srt-btn").addEventListener("click", () => {
+      if (!currentResult) return;
+      downloadFile(buildSrt(currentResult.segments), "transkript.srt", "text/plain");
+    });
+
+    function buildSrt(segments) {
+      return (segments || [])
+        .map((seg, i) => {
+          return `${i + 1}\n${srtTime(seg.start)} --> ${srtTime(seg.end)}\n${seg.text}\n`;
+        })
+        .join("\n");
+    }
+
+    function srtTime(seconds) {
+      if (!seconds) return "00:00:00,000";
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = Math.floor(seconds % 60);
+      const ms = Math.round((seconds - Math.floor(seconds)) * 1000);
+      return `${pad(h)}:${pad(m)}:${pad(s)},${String(ms).padStart(3, "0")}`;
+    }
+
+    function downloadFile(content, filename, mime) {
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // Initialize worker on first interaction
+    document.addEventListener("click", () => {
+      if (!whisperWorker) initWorker();
+    }, { once: true });
+  </script>
 </body>
 </html>

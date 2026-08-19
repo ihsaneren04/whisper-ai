@@ -1,11 +1,5 @@
-__pycache__/
-*.pyc
-.venv/
-venv/
-env/
-uploads/*
-!uploads/.gitkeep
 .DS_Store
-*.egg-info/
-.idea/
-.vscode/
+node_modules/
+.venv/
+*.pyc
+*.log
