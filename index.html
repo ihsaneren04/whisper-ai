@@ -422,13 +422,17 @@
     </footer>
   </div>
 
-  <script>
-    // Whisper ONNX runtime'ı CDN'den yükle
-    const WHISPER_JS_URL = "https://cdn-models.huggingface.co/whisper-web/whisper_onnx.js";
+  <script type="module">
+    import { pipeline, env } from "https://cdn-models.huggingface.co/transformers.js/transformers.js";
 
-    let whisperWorker = null;
+    // CORS için proxy ayarla
+    env.allowLocalModels = false;
+    env.allowRemoteModels = true;
+
     let selectedFile = null;
     let currentResult = null;
+    let transcriber = null;
+    let isLoadingModel = false;
 
     const dropzone = document.getElementById("dropzone");
     const fileInput = document.getElementById("file-input");
@@ -496,6 +500,29 @@
       return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     }
 
+    // Initialize model
+    async function initModel(modelSize) {
+      if (transcriber && !isLoadingModel) return;
+      
+      if (isLoadingModel) {
+        statusText.textContent = "Model yükleniyor (lütfen bekleyin)...";
+        return;
+      }
+
+      isLoadingModel = true;
+      statusText.textContent = `${modelSize} modeli yükleniyor (ilk seferde 2-3 dakika sürebilir)...`;
+
+      try {
+        const modelName = `openai/whisper-${modelSize}`;
+        transcriber = await pipeline("automatic-speech-recognition", modelName);
+        isLoadingModel = false;
+      } catch (err) {
+        isLoadingModel = false;
+        showError("Model yüklenemedi: " + err.message);
+        throw err;
+      }
+    }
+
     // Submit
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -503,93 +530,50 @@
 
       resetUI();
       statusSection.classList.remove("hidden");
-      statusText.textContent = "Ses dosyası işleniyor...";
       submitBtn.disabled = true;
 
       try {
-        // Audio dosyasını ArrayBuffer'a çevir
-        const arrayBuffer = await selectedFile.arrayBuffer();
+        const modelSize = document.getElementById("model").value;
+        
+        // Model'i yükle
+        await initModel(modelSize);
 
-        // Worker'a gönder
-        whisperWorker.postMessage({
-          type: "transcribe",
-          audio: arrayBuffer,
-          model: document.getElementById("model").value,
-          language: document.getElementById("language").value,
-          task: document.getElementById("task").value,
+        statusText.textContent = "Ses dosyası işleniyor...";
+
+        // Ses dosyasını okuyup URL oluştur
+        const arrayBuffer = await selectedFile.arrayBuffer();
+        const blob = new Blob([arrayBuffer], { type: selectedFile.type });
+        const url = URL.createObjectURL(blob);
+
+        statusText.textContent = "Transkript oluşturuluyor (bu biraz sürebilir)...";
+
+        // Transkripsiyon yap
+        const language = document.getElementById("language").value;
+        const result = await transcriber(url, {
+          language: language === "auto" ? null : language,
+          return_timestamps: true,
+          chunk_length_s: 30,
+          stride_length_s: 5,
+        });
+
+        URL.revokeObjectURL(url);
+
+        // Format sonucu
+        const segments = (result.chunks || []).map((chunk) => ({
+          start: chunk.timestamp[0],
+          end: chunk.timestamp[1],
+          text: chunk.text,
+        }));
+
+        showResult({
+          text: result.text,
+          language: result.language || "unknown",
+          segments: segments,
         });
       } catch (err) {
-        showError("Dosya işlenirken hata: " + err.message);
+        showError("Transkripsiyon hatası: " + err.message);
       }
     });
-
-    // Worker message handler
-    function initWorker() {
-      if (whisperWorker) return;
-
-      whisperWorker = new Worker(URL.createObjectURL(new Blob([`
-        let whisper = null;
-
-        async function initWhisper(model) {
-          if (whisper) return;
-          importScripts("https://cdn-models.huggingface.co/whisper-web/whisper.js");
-          const Whisper = self.Whisper;
-          whisper = new Whisper({
-            model: model
-          });
-          await whisper.init();
-        }
-
-        self.onmessage = async (e) => {
-          const { type, audio, model, language, task } = e.data;
-
-          if (type === "transcribe") {
-            try {
-              await initWhisper(model);
-
-              self.postMessage({ type: "status", text: "Transkript oluşturuluyor..." });
-
-              const result = await whisper.transcribe(audio, {
-                language: language === "auto" ? null : language,
-                task: task
-              });
-
-              self.postMessage({
-                type: "result",
-                text: result.text,
-                language: result.language,
-                segments: result.segments
-              });
-            } catch (err) {
-              self.postMessage({
-                type: "error",
-                error: err.message
-              });
-            }
-          }
-        };
-      `], { type: "application/javascript" })));
-
-      whisperWorker.onmessage = (e) => {
-        const { type, text, language, segments, error } = e.data;
-
-        if (type === "status") {
-          statusText.textContent = text;
-        } else if (type === "result") {
-          showResult({
-            text: text,
-            language: language,
-            segments: segments || []
-          });
-        } else if (type === "error") {
-          showError("Transkripsiyon hatası: " + error);
-        }
-      };
-
-      whisperWorker.onerror = (err) => {
-        showError("Worker hatası: " + err.message);
-      };
-    }
 
     function showResult(result) {
       currentResult = result;
@@ -697,11 +681,6 @@
       a.click();
       URL.revokeObjectURL(url);
     }
-
-    // Initialize worker on first interaction
-    document.addEventListener("click", () => {
-      if (!whisperWorker) initWorker();
-    }, { once: true });
   </script>
 </body>
 </html>
