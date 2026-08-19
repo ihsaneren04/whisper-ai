@@ -456,6 +456,18 @@
       fileInput.click();
     });
 
+    // Sayfanın herhangi bir yerine bırakılan dosyayı tarayıcının file:// URL'i olarak
+    // açmaya çalışmasını (ve buna bağlı güvenlik hatasını) önlemek için varsayılan
+    // sürükle-bırak davranışını belge genelinde de engelle.
+    ["dragenter", "dragover", "drop"].forEach((evt) => {
+      window.addEventListener(evt, (e) => e.preventDefault());
+    });
+
+    dropzone.addEventListener("dragenter", (e) => {
+      e.preventDefault();
+      dropzone.classList.add("dragover");
+    });
+
     dropzone.addEventListener("dragover", (e) => {
       e.preventDefault();
       dropzone.classList.add("dragover");
@@ -465,6 +477,7 @@
 
     dropzone.addEventListener("drop", (e) => {
       e.preventDefault();
+      e.stopPropagation();
       dropzone.classList.remove("dragover");
       if (e.dataTransfer.files.length) {
         setFile(e.dataTransfer.files[0]);
