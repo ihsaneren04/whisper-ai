@@ -331,7 +331,7 @@
     <main>
       <form id="transcribe-form">
         <div class="dropzone" id="dropzone">
-          <input type="file" id="file-input" name="file" accept=".mp3,.wav,.m4a,.mp4,.flac,.ogg,.webm,.mov" hidden>
+          <input type="file" id="file-input" name="file" accept="audio/*,video/*,.mp3,.wav,.m4a,.mp4,.flac,.ogg,.webm,.mov" hidden>
           <div id="dropzone-content">
             <span class="dz-icon">📁</span>
             <p><strong>Dosya seç</strong> ya da buraya sürükle</p>
@@ -423,7 +423,7 @@
   </div>
 
   <script type="module">
-    import { pipeline, env } from "https://cdn-models.huggingface.co/transformers.js/transformers.js";
+    import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2/+esm";
 
     // CORS için proxy ayarla
     env.allowLocalModels = false;
@@ -454,7 +454,11 @@
     const detectedLangEl = document.getElementById("detected-lang");
 
     // File selection
-    dropzone.addEventListener("click", () => fileInput.click());
+    dropzone.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      fileInput.click();
+    });
 
     dropzone.addEventListener("dragover", (e) => {
       e.preventDefault();
