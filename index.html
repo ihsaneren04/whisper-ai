@@ -60,6 +60,7 @@
     }
 
     .dropzone {
+      display: block;
       border: 2px dashed var(--border);
       border-radius: var(--radius);
       padding: 36px 20px;
@@ -99,6 +100,8 @@
       border-radius: 6px;
       cursor: pointer;
       font-size: 0.85rem;
+      position: relative;
+      z-index: 1;
     }
 
     #file-selected button:hover {
@@ -183,6 +186,12 @@
 
     #status-text {
       color: var(--text-dim);
+    }
+
+    #status-subtext {
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      margin-top: 4px;
     }
 
     #result-section {
@@ -308,6 +317,16 @@
       font-size: 0.9rem;
     }
 
+    #compat-warning {
+      margin-bottom: 20px;
+      padding: 14px 16px;
+      background: rgba(248, 113, 113, 0.08);
+      border: 1px solid rgba(248, 113, 113, 0.3);
+      border-radius: 8px;
+      color: var(--error);
+      font-size: 0.9rem;
+    }
+
     footer {
       text-align: center;
       margin-top: 28px;
@@ -330,8 +349,10 @@
     </header>
 
     <main>
+      <div id="compat-warning" class="hidden"></div>
+
       <form id="transcribe-form">
-        <div class="dropzone" id="dropzone">
+        <label class="dropzone" id="dropzone" for="file-input">
           <input type="file" id="file-input" name="file" accept="audio/*,video/*,.mp3,.wav,.m4a,.mp4,.flac,.ogg,.webm,.mov" hidden>
           <div id="dropzone-content">
             <span class="dz-icon">📁</span>
@@ -343,14 +364,14 @@
             <p id="file-name"></p>
             <button type="button" id="clear-file">Kaldır</button>
           </div>
-        </div>
+        </label>
 
         <div class="options-grid">
           <div class="option">
             <label for="model">Model</label>
             <select id="model" name="model">
               <option value="tiny">tiny (39M, en hızlı)</option>
-              <option value="base" selected>base (74M, dengeliş)</option>
+              <option value="base" selected>base (74M, dengeli)</option>
               <option value="small">small (244M)</option>
             </select>
             <span class="hint">Büyük = daha doğru ama yavaş</span>
@@ -384,6 +405,7 @@
       <section id="status-section" class="hidden">
         <div class="spinner"></div>
         <p id="status-text">Model yükleniyor...</p>
+        <p id="status-subtext"></p>
       </section>
 
       <section id="result-section" class="hidden">
@@ -429,6 +451,7 @@
     let selectedFile = null;
     let currentResult = null;
     let transcriber = null;
+    let loadedModelSize = null;
     let isLoadingModel = false;
 
     const dropzone = document.getElementById("dropzone");
@@ -442,24 +465,35 @@
 
     const statusSection = document.getElementById("status-section");
     const statusText = document.getElementById("status-text");
+    const statusSubtext = document.getElementById("status-subtext");
     const resultSection = document.getElementById("result-section");
     const errorSection = document.getElementById("error-section");
     const errorText = document.getElementById("error-text");
+    const compatWarning = document.getElementById("compat-warning");
 
     const plainTextEl = document.getElementById("plain-text");
     const segmentsListEl = document.getElementById("segments-list");
     const detectedLangEl = document.getElementById("detected-lang");
 
-    // File selection
-    dropzone.addEventListener("click", (e) => {
+    // Tarayıcı uyumluluğu: WebAssembly yoksa transformers.js hiç çalışmaz.
+    if (typeof WebAssembly === "undefined") {
+      compatWarning.textContent = "⚠ Bu tarayıcı WebAssembly desteklemiyor, sayfa çalışmayacaktır. Lütfen güncel bir Chrome/Edge/Firefox kullanın.";
+      compatWarning.classList.remove("hidden");
+    }
+
+    // Dosya seçimi native <label for="file-input"> ile tetiklenir (JS gerekmez).
+    // "Kaldır" butonu interaktif bir eleman olduğu için label'ın varsayılan
+    // davranışını (dosya seçiciyi açma) tetiklemez, ama garanti olsun diye
+    // yine de olay yayılımını durduruyoruz.
+    clearFileBtn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      fileInput.click();
+      setFile(null);
     });
 
-    // Sayfanın herhangi bir yerine bırakılan dosyayı tarayıcının file:// URL'i olarak
-    // açmaya çalışmasını (ve buna bağlı güvenlik hatasını) önlemek için varsayılan
-    // sürükle-bırak davranışını belge genelinde de engelle.
+    // Sayfanın herhangi bir yerine bırakılan dosyayı tarayıcının file:// URL'i
+    // olarak açmaya çalışmasını (ve buna bağlı güvenlik hatasını) önlemek için
+    // varsayılan sürükle-bırak davranışını belge genelinde de engelle.
     ["dragenter", "dragover", "drop"].forEach((evt) => {
       window.addEventListener(evt, (e) => e.preventDefault());
     });
@@ -489,11 +523,6 @@
       if (fileInput.files.length) setFile(fileInput.files[0]);
     });
 
-    clearFileBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      setFile(null);
-    });
-
     function setFile(file) {
       selectedFile = file;
       if (file) {
@@ -514,29 +543,34 @@
       return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     }
 
-    // Initialize model
+    // Model yükle (gerekirse kütüphaneyi de ilk kez indirir)
     async function initModel(modelSize) {
-      if (transcriber && !isLoadingModel) return;
-      
-      if (isLoadingModel) {
-        statusText.textContent = "Model yükleniyor (lütfen bekleyin)...";
-        return;
-      }
+      if (transcriber && loadedModelSize === modelSize) return;
 
       isLoadingModel = true;
-      statusText.textContent = `${modelSize} modeli yükleniyor (ilk seferde 2-3 dakika sürebilir)...`;
+      statusText.textContent = `${modelSize} modeli yükleniyor (ilk seferde 1-3 dakika sürebilir)...`;
+      statusSubtext.textContent = "";
 
       try {
         const { pipeline, env } = await import(TRANSFORMERS_CDN_URL);
         env.allowLocalModels = false;
         env.allowRemoteModels = true;
 
-        const modelName = `openai/whisper-${modelSize}`;
-        transcriber = await pipeline("automatic-speech-recognition", modelName);
+        const modelName = `Xenova/whisper-${modelSize}`;
+        transcriber = await pipeline("automatic-speech-recognition", modelName, {
+          progress_callback: (progress) => {
+            if (progress.status === "progress" && progress.file) {
+              const pct = progress.total ? Math.round((progress.loaded / progress.total) * 100) : 0;
+              statusSubtext.textContent = `${progress.file}: %${pct}`;
+            }
+          },
+        });
+        loadedModelSize = modelSize;
         isLoadingModel = false;
       } catch (err) {
         isLoadingModel = false;
-        showError("Model yüklenemedi: " + err.message);
+        transcriber = null;
+        loadedModelSize = null;
         throw err;
       }
     }
@@ -544,7 +578,7 @@
     // Submit
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      if (!selectedFile) return;
+      if (!selectedFile || isLoadingModel) return;
 
       resetUI();
       statusSection.classList.remove("hidden");
@@ -552,31 +586,34 @@
 
       try {
         const modelSize = document.getElementById("model").value;
-        
-        // Model'i yükle
+
         await initModel(modelSize);
 
         statusText.textContent = "Ses dosyası işleniyor...";
+        statusSubtext.textContent = "";
 
-        // Ses dosyasını okuyup URL oluştur
         const arrayBuffer = await selectedFile.arrayBuffer();
         const blob = new Blob([arrayBuffer], { type: selectedFile.type });
         const url = URL.createObjectURL(blob);
 
         statusText.textContent = "Transkript oluşturuluyor (bu biraz sürebilir)...";
 
-        // Transkripsiyon yap
         const language = document.getElementById("language").value;
-        const result = await transcriber(url, {
-          language: language === "auto" ? null : language,
-          return_timestamps: true,
-          chunk_length_s: 30,
-          stride_length_s: 5,
-        });
+        const task = document.getElementById("task").value;
 
-        URL.revokeObjectURL(url);
+        let result;
+        try {
+          result = await transcriber(url, {
+            language: language === "auto" ? null : language,
+            task: task,
+            return_timestamps: true,
+            chunk_length_s: 30,
+            stride_length_s: 5,
+          });
+        } finally {
+          URL.revokeObjectURL(url);
+        }
 
-        // Format sonucu
         const segments = (result.chunks || []).map((chunk) => ({
           start: chunk.timestamp[0],
           end: chunk.timestamp[1],
@@ -584,12 +621,13 @@
         }));
 
         showResult({
-          text: result.text,
-          language: result.language || "unknown",
+          text: result.text.trim(),
+          language: language === "auto" ? "otomatik algılandı" : language,
           segments: segments,
         });
       } catch (err) {
-        showError("Transkripsiyon hatası: " + err.message);
+        console.error(err);
+        showError((err && err.message) ? err.message : String(err));
       }
     });
 
@@ -599,7 +637,7 @@
       resultSection.classList.remove("hidden");
       submitBtn.disabled = false;
 
-      detectedLangEl.textContent = `Algılanan dil: ${result.language}`;
+      detectedLangEl.textContent = `Dil: ${result.language}`;
       plainTextEl.value = result.text;
 
       segmentsListEl.innerHTML = "";
@@ -614,7 +652,7 @@
     function showError(msg) {
       statusSection.classList.add("hidden");
       errorSection.classList.remove("hidden");
-      errorText.textContent = "⚠ " + msg;
+      errorText.textContent = "⚠ Hata: " + msg;
       submitBtn.disabled = false;
     }
 
@@ -624,7 +662,7 @@
     }
 
     function formatTime(seconds) {
-      if (!seconds) return "0:00";
+      if (!seconds) seconds = 0;
       const h = Math.floor(seconds / 3600);
       const m = Math.floor((seconds % 3600) / 60);
       const s = Math.floor(seconds % 60);
