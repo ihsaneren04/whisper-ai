@@ -423,11 +423,7 @@
   </div>
 
   <script type="module">
-    import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2/+esm";
-
-    // CORS için proxy ayarla
-    env.allowLocalModels = false;
-    env.allowRemoteModels = true;
+    const TRANSFORMERS_CDN_URL = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2/+esm";
 
     let selectedFile = null;
     let currentResult = null;
@@ -517,6 +513,10 @@
       statusText.textContent = `${modelSize} modeli yükleniyor (ilk seferde 2-3 dakika sürebilir)...`;
 
       try {
+        const { pipeline, env } = await import(TRANSFORMERS_CDN_URL);
+        env.allowLocalModels = false;
+        env.allowRemoteModels = true;
+
         const modelName = `openai/whisper-${modelSize}`;
         transcriber = await pipeline("automatic-speech-recognition", modelName);
         isLoadingModel = false;
