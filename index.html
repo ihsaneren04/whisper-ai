@@ -414,9 +414,13 @@
           <div class="result-meta">
             <span id="detected-lang"></span>
           </div>
-          <div class="result-actions">
+          <div class="result-actions" id="plain-actions">
             <button type="button" id="copy-btn">📋 Kopyala</button>
             <button type="button" id="download-txt-btn">⬇ .txt indir</button>
+          </div>
+          <div class="result-actions hidden" id="segments-actions">
+            <button type="button" id="copy-timestamped-btn">📋 Kopyala</button>
+            <button type="button" id="download-timestamped-txt-btn">⬇ .txt indir</button>
             <button type="button" id="download-srt-btn">⬇ .srt indir</button>
           </div>
         </div>
@@ -681,24 +685,26 @@
     }
 
     // Tabs
+    const plainActions = document.getElementById("plain-actions");
+    const segmentsActions = document.getElementById("segments-actions");
+
     document.querySelectorAll(".tab-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
         document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
         btn.classList.add("active");
         document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
+
+        const isSegments = btn.dataset.tab === "segments";
+        plainActions.classList.toggle("hidden", isSegments);
+        segmentsActions.classList.toggle("hidden", !isSegments);
       });
     });
 
-    // Download/Copy
+    // Download/Copy — düz metin
     document.getElementById("copy-btn").addEventListener("click", () => {
       if (!currentResult) return;
-      navigator.clipboard.writeText(currentResult.text).then(() => {
-        const btn = document.getElementById("copy-btn");
-        const original = btn.textContent;
-        btn.textContent = "✓ Kopyalandı";
-        setTimeout(() => (btn.textContent = original), 1500);
-      });
+      copyToClipboard(currentResult.text, "copy-btn");
     });
 
     document.getElementById("download-txt-btn").addEventListener("click", () => {
@@ -706,10 +712,36 @@
       downloadFile(currentResult.text, "transkript.txt", "text/plain");
     });
 
+    // Download/Copy — zaman damgalı
+    document.getElementById("copy-timestamped-btn").addEventListener("click", () => {
+      if (!currentResult) return;
+      copyToClipboard(buildTimestampedText(currentResult.segments), "copy-timestamped-btn");
+    });
+
+    document.getElementById("download-timestamped-txt-btn").addEventListener("click", () => {
+      if (!currentResult) return;
+      downloadFile(buildTimestampedText(currentResult.segments), "transkript-zaman-damgali.txt", "text/plain");
+    });
+
     document.getElementById("download-srt-btn").addEventListener("click", () => {
       if (!currentResult) return;
       downloadFile(buildSrt(currentResult.segments), "transkript.srt", "text/plain");
     });
+
+    function copyToClipboard(text, btnId) {
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById(btnId);
+        const original = btn.textContent;
+        btn.textContent = "✓ Kopyalandı";
+        setTimeout(() => (btn.textContent = original), 1500);
+      });
+    }
+
+    function buildTimestampedText(segments) {
+      return (segments || [])
+        .map((seg) => `[${formatTime(seg.start)} → ${formatTime(seg.end)}] ${seg.text.trim()}`)
+        .join("\n");
+    }
 
     function buildSrt(segments) {
       return (segments || [])
