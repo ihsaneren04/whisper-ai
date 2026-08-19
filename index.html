@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whisper UI — Ses/Video Transkripsiyon</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>🎙️ Whisper UI</h1>
+    <p class="subtitle">OpenAI Whisper ile ses ve video dosyalarını yazıya dökün</p>
+  </header>
+
+  <main>
+    <form id="transcribe-form">
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="file-input" name="file" accept=".mp3,.wav,.m4a,.mp4,.flac,.ogg,.webm,.mov" hidden>
+        <div id="dropzone-content">
+          <span class="dz-icon">📁</span>
+          <p><strong>Dosya seç</strong> ya da buraya sürükle</p>
+          <p class="dz-hint">mp3, wav, m4a, mp4, flac, ogg, webm, mov</p>
+        </div>
+        <div id="file-selected" class="hidden">
+          <span class="dz-icon">✅</span>
+          <p id="file-name"></p>
+          <button type="button" id="clear-file">Kaldır</button>
+        </div>
+      </div>
+
+      <div class="options-grid">
+        <div class="option">
+          <label for="model">Model</label>
+          <select id="model" name="model">
+            {% for m in models %}
+            <option value="{{ m }}" {% if m == 'base' %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </select>
+          <span class="hint">Büyük model = daha doğru ama daha yavaş</span>
+        </div>
+
+        <div class="option">
+          <label for="language">Dil</label>
+          <select id="language" name="language">
+            <option value="auto" selected>Otomatik algıla</option>
+            <option value="tr">Türkçe</option>
+            <option value="en">İngilizce</option>
+            <option value="de">Almanca</option>
+            <option value="fr">Fransızca</option>
+            <option value="es">İspanyolca</option>
+            <option value="ru">Rusça</option>
+            <option value="ar">Arapça</option>
+          </select>
+        </div>
+
+        <div class="option">
+          <label for="task">İşlem</label>
+          <select id="task" name="task">
+            <option value="transcribe" selected>Transkript (orijinal dil)</option>
+            <option value="translate">İngilizceye çevir</option>
+          </select>
+        </div>
+      </div>
+
+      <button type="submit" id="submit-btn" disabled>Transkript Et</button>
+    </form>
+
+    <section id="status-section" class="hidden">
+      <div class="spinner"></div>
+      <p id="status-text">Başlatılıyor...</p>
+    </section>
+
+    <section id="result-section" class="hidden">
+      <div class="result-header">
+        <h2>Sonuç</h2>
+        <div class="result-meta">
+          <span id="detected-lang"></span>
+        </div>
+        <div class="result-actions">
+          <button type="button" id="copy-btn">📋 Kopyala</button>
+          <button type="button" id="download-txt-btn">⬇ .txt indir</button>
+          <button type="button" id="download-srt-btn">⬇ .srt indir</button>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button type="button" class="tab-btn active" data-tab="plain">Düz Metin</button>
+        <button type="button" class="tab-btn" data-tab="segments">Zaman Damgalı</button>
+      </div>
+
+      <div id="tab-plain" class="tab-content active">
+        <textarea id="plain-text" readonly></textarea>
+      </div>
+
+      <div id="tab-segments" class="tab-content">
+        <div id="segments-list"></div>
+      </div>
+    </section>
+
+    <section id="error-section" class="hidden">
+      <p id="error-text"></p>
+    </section>
+  </main>
+
+  <footer>
+    <p>Yerel olarak çalışır — dosyalarınız hiçbir yere gönderilmez.</p>
+  </footer>
+
+</div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
