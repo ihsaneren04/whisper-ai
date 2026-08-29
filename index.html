@@ -194,6 +194,28 @@
       margin-top: 4px;
     }
 
+    #engine-badge {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    #engine-badge.webgpu {
+      background: rgba(74, 222, 128, 0.12);
+      color: var(--success);
+      border: 1px solid rgba(74, 222, 128, 0.3);
+    }
+
+    #engine-badge.wasm {
+      background: rgba(154, 160, 172, 0.12);
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+    }
+
     #result-section {
       margin-top: 24px;
     }
@@ -406,6 +428,7 @@
         <div class="spinner"></div>
         <p id="status-text">Model yükleniyor...</p>
         <p id="status-subtext"></p>
+        <span id="engine-badge" class="hidden"></span>
       </section>
 
       <section id="result-section" class="hidden">
@@ -456,6 +479,7 @@
     let currentResult = null;
     let transcriber = null;
     let loadedModelSize = null;
+    let loadedDevice = null;
     let isLoadingModel = false;
 
     const dropzone = document.getElementById("dropzone");
@@ -470,6 +494,7 @@
     const statusSection = document.getElementById("status-section");
     const statusText = document.getElementById("status-text");
     const statusSubtext = document.getElementById("status-subtext");
+    const engineBadge = document.getElementById("engine-badge");
     const resultSection = document.getElementById("result-section");
     const errorSection = document.getElementById("error-section");
     const errorText = document.getElementById("error-text");
@@ -483,6 +508,31 @@
     if (typeof WebAssembly === "undefined") {
       compatWarning.textContent = "⚠ Bu tarayıcı WebAssembly desteklemiyor, sayfa çalışmayacaktır. Lütfen güncel bir Chrome/Edge/Firefox kullanın.";
       compatWarning.classList.remove("hidden");
+    }
+
+    // WebGPU destekleniyor mu? Destekleniyorsa GPU üzerinde çalıştırmak
+    // WASM (CPU) fallback'ine göre büyük hız kazancı sağlar.
+    async function detectDevice() {
+      if (typeof navigator !== "undefined" && navigator.gpu) {
+        try {
+          const adapter = await navigator.gpu.requestAdapter();
+          if (adapter) return "webgpu";
+        } catch (e) {
+          // adapter alınamadı, wasm'a düş
+        }
+      }
+      return "wasm";
+    }
+
+    function showEngineBadge(device) {
+      engineBadge.classList.remove("hidden", "webgpu", "wasm");
+      if (device === "webgpu") {
+        engineBadge.textContent = "⚡ WebGPU (hızlandırılmış)";
+        engineBadge.classList.add("webgpu");
+      } else {
+        engineBadge.textContent = "🐢 WASM/CPU (WebGPU bulunamadı)";
+        engineBadge.classList.add("wasm");
+      }
     }
 
     // Dosya seçimi native <label for="file-input"> ile tetiklenir (JS gerekmez).
@@ -547,11 +597,19 @@
       return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     }
 
-    // Model yükle (gerekirse kütüphaneyi de ilk kez indirir)
+    // Model yükle (gerekirse kütüphaneyi de ilk kez indirir).
+    // WebGPU varsa GPU üzerinde, yoksa WASM (CPU) üzerinde quantized (q8)
+    // ağırlıklarla çalıştırır — WASM'da q8 hem indirmeyi hem inference'ı hızlandırır.
     async function initModel(modelSize) {
-      if (transcriber && loadedModelSize === modelSize) return;
+      const device = await detectDevice();
+
+      if (transcriber && loadedModelSize === modelSize && loadedDevice === device) {
+        showEngineBadge(device);
+        return;
+      }
 
       isLoadingModel = true;
+      showEngineBadge(device);
       statusText.textContent = `${modelSize} modeli yükleniyor (ilk seferde 1-3 dakika sürebilir)...`;
       statusSubtext.textContent = "";
 
@@ -562,6 +620,8 @@
 
         const modelName = `Xenova/whisper-${modelSize}`;
         transcriber = await pipeline("automatic-speech-recognition", modelName, {
+          device,
+          dtype: device === "webgpu" ? "fp32" : "q8",
           progress_callback: (progress) => {
             if (progress.status === "progress" && progress.file) {
               const pct = progress.total ? Math.round((progress.loaded / progress.total) * 100) : 0;
@@ -570,11 +630,40 @@
           },
         });
         loadedModelSize = modelSize;
+        loadedDevice = device;
         isLoadingModel = false;
       } catch (err) {
         isLoadingModel = false;
         transcriber = null;
         loadedModelSize = null;
+        loadedDevice = null;
+
+        // WebGPU'da model yükleme/çalıştırma başarısız olursa WASM'a düş.
+        if (device === "webgpu") {
+          statusText.textContent = "WebGPU başarısız oldu, WASM'a geçiliyor...";
+          showEngineBadge("wasm");
+          try {
+            const { pipeline, env } = await import(TRANSFORMERS_CDN_URL);
+            env.allowLocalModels = false;
+            env.allowRemoteModels = true;
+            const modelName = `Xenova/whisper-${modelSize}`;
+            transcriber = await pipeline("automatic-speech-recognition", modelName, {
+              device: "wasm",
+              dtype: "q8",
+              progress_callback: (progress) => {
+                if (progress.status === "progress" && progress.file) {
+                  const pct = progress.total ? Math.round((progress.loaded / progress.total) * 100) : 0;
+                  statusSubtext.textContent = `${progress.file}: %${pct}`;
+                }
+              },
+            });
+            loadedModelSize = modelSize;
+            loadedDevice = "wasm";
+            return;
+          } catch (fallbackErr) {
+            throw fallbackErr;
+          }
+        }
         throw err;
       }
     }
